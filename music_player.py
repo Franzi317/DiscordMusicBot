@@ -49,13 +49,32 @@ class MusicPlayer:
         """Get the volume for a guild"""
         if guild_id not in self.volume:
             self.volume[guild_id] = Config.DEFAULT_VOLUME
+            logger.info(f"Initialized default volume for guild {guild_id}: {Config.DEFAULT_VOLUME}")
+        return self.volume[guild_id]
+    
+    def ensure_volume_initialized(self, guild_id: int) -> float:
+        """Ensure volume is initialized and return it"""
+        if guild_id not in self.volume:
+            self.volume[guild_id] = Config.DEFAULT_VOLUME
+            logger.info(f"Ensured volume initialized for guild {guild_id}: {Config.DEFAULT_VOLUME}")
         return self.volume[guild_id]
     
     def set_volume(self, guild_id: int, volume: float):
         """Set the volume for a guild"""
-        self.volume[guild_id] = max(0.0, min(volume, Config.MAX_VOLUME))
+        # Ensure volume is a valid float
+        try:
+            volume = float(volume)
+            self.volume[guild_id] = max(0.0, min(volume, Config.MAX_VOLUME))
+        except (ValueError, TypeError):
+            # Fallback to default volume if invalid
+            self.volume[guild_id] = Config.DEFAULT_VOLUME
+        
+        # Update current audio source volume if playing
         if guild_id in self.voice_clients and self.voice_clients[guild_id].source:
-            self.voice_clients[guild_id].source.volume = self.volume[guild_id]
+            try:
+                self.voice_clients[guild_id].source.volume = self.volume[guild_id]
+            except Exception as e:
+                logger.warning(f"Could not update volume for guild {guild_id}: {e}")
     
     async def search_youtube(self, query: str) -> Optional[Song]:
         """Search YouTube for a song"""
@@ -125,46 +144,72 @@ class MusicPlayer:
         # Play the song
         try:
             voice_client = self.voice_clients.get(guild_id)
-            if voice_client and voice_client.is_connected():
-                # Create audio source
-                ydl_opts = Config.YOUTUBE_DL_OPTIONS.copy()
+            if not voice_client:
+                logger.error(f"No voice client found for guild {guild_id}")
+                return
+            
+            if not voice_client.is_connected():
+                logger.error(f"Voice client not connected for guild {guild_id}")
+                return
+            
+            logger.info(f"Starting playback for: {song.title} in guild {guild_id}")
+            
+            # Create audio source
+            ydl_opts = Config.YOUTUBE_DL_OPTIONS.copy()
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(song.url, download=False)
                 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(song.url, download=False)
-                    
-                    # Find the best audio format
-                    audio_formats = [f for f in info['formats'] if f.get('acodec') != 'none']
-                    if not audio_formats:
-                        # Fallback to any format
-                        audio_formats = info['formats']
-                    
-                    # Sort by quality (prefer audio-only formats)
-                    audio_formats.sort(key=lambda x: (
-                        x.get('acodec') == 'none',  # Prefer audio-only
-                        x.get('abr', 0),            # Higher bitrate
-                        x.get('filesize', 0)        # Larger file size
-                    ))
-                    
-                    url = audio_formats[0]['url']
-                    
-                    # Create FFmpeg audio source
-                    source = discord.FFmpegPCMAudio(
-                        url,
-                        **Config.FFMPEG_OPTIONS
-                    )
-                    
-                    # Apply volume
-                    source = discord.PCMVolumeTransformer(source, volume=self.get_volume(guild_id))
-                    
-                    # Play the audio
-                    voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(
-                        self.play_next(guild_id), self.bot.loop
-                    ))
-                    
-                    logger.info(f"Now playing: {song.title} in guild {guild_id}")
-                    
+                # Find the best audio format
+                audio_formats = [f for f in info['formats'] if f.get('acodec') != 'none']
+                if not audio_formats:
+                    # Fallback to any format
+                    audio_formats = info['formats']
+                
+                if not audio_formats:
+                    logger.error(f"No audio formats found for song: {song.title}")
+                    raise ValueError("No audio formats available")
+                
+                # Sort by quality (prefer audio-only formats)
+                audio_formats.sort(key=lambda x: (
+                    x.get('acodec') == 'none',  # Prefer audio-only
+                    x.get('abr', 0),            # Higher bitrate
+                    x.get('filesize', 0)        # Larger file size
+                ))
+                
+                url = audio_formats[0]['url']
+                if not url:
+                    logger.error(f"No URL found in audio format for song: {song.title}")
+                    raise ValueError("No audio URL available")
+                
+                logger.info(f"Using audio URL: {url[:100]}...")
+                
+                # Create FFmpeg audio source
+                source = discord.FFmpegPCMAudio(
+                    url,
+                    **Config.FFMPEG_OPTIONS
+                )
+                
+                # Apply volume with safety check
+                volume = self.ensure_volume_initialized(guild_id)
+                if volume is None or not isinstance(volume, (int, float)):
+                    volume = Config.DEFAULT_VOLUME
+                    self.volume[guild_id] = volume
+                    logger.info(f"Reset volume to default for guild {guild_id}: {volume}")
+                
+                logger.info(f"Setting volume to {volume} for guild {guild_id}")
+                source = discord.PCMVolumeTransformer(source, volume=float(volume))
+                
+                # Play the audio
+                voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(
+                    self.play_next(guild_id), self.bot.loop
+                ))
+                
+                logger.info(f"Now playing: {song.title} in guild {guild_id}")
+                
         except Exception as e:
-            logger.error(f"Error playing song: {e}")
+            logger.error(f"Error playing song '{song.title}' in guild {guild_id}: {e}")
+            logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
             # Try to play next song
             await self.play_next(guild_id)
     
