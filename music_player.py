@@ -114,6 +114,56 @@ class MusicPlayer:
         except Exception as e:
             logger.error(f"Error searching YouTube: {e}")
             return None
+
+    async def search_youtube_multiple(self, query: str, max_results: int = 5) -> List[Song]:
+        """Search YouTube for multiple songs"""
+        try:
+            ydl_opts = Config.YOUTUBE_DL_OPTIONS.copy()
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Try to extract info directly if it's a URL
+                if query.startswith(('http://', 'https://')):
+                    info = ydl.extract_info(query, download=False)
+                    # For direct URLs, return as single result
+                    if info.get('title') and info.get('webpage_url'):
+                        song = Song(
+                            title=info.get('title', 'Unknown Title'),
+                            url=info.get('webpage_url', query),
+                            duration=info.get('duration', 0),
+                            requester=None,
+                            thumbnail=info.get('thumbnail')
+                        )
+                        return [song]
+                    return []
+                else:
+                    # Search for multiple results
+                    search_query = f"ytsearch{max_results}:{query}"
+                    info = ydl.extract_info(search_query, download=False)
+                    
+                    if 'entries' not in info or not info['entries']:
+                        return []
+                    
+                    songs = []
+                    for entry in info['entries']:
+                        if entry and entry.get('title') and entry.get('webpage_url'):
+                            song = Song(
+                                title=entry.get('title', 'Unknown Title'),
+                                url=entry.get('webpage_url', ''),
+                                duration=entry.get('duration', 0),
+                                requester=None,  # Will be set by caller
+                                thumbnail=entry.get('thumbnail')
+                            )
+                            songs.append(song)
+                            
+                            if len(songs) >= max_results:
+                                break
+                    
+                    logger.info(f"Found {len(songs)} songs for query: {query}")
+                    return songs
+                
+        except Exception as e:
+            logger.error(f"Error searching YouTube for multiple results: {e}")
+            return []
     
     async def add_to_queue(self, guild_id: int, song: Song) -> bool:
         """Add a song to the queue"""
