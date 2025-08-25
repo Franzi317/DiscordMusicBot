@@ -44,8 +44,20 @@ pip install -r requirements.txt
 ### 3. Install FFmpeg
 
 **Windows:**
-- Download from [FFmpeg website](https://ffmpeg.org/download.html)
-- Add to PATH environment variable
+1. Download FFmpeg from [FFmpeg website](https://ffmpeg.org/download.html)
+   - Go to "Windows Builds" section
+   - Download the latest release (e.g., "ffmpeg-master-latest-win64-gpl.zip")
+2. Extract the ZIP file to a permanent location (e.g., `C:\ffmpeg`)
+3. Add FFmpeg to PATH:
+   - Press `Win + R`, type `sysdm.cpl`, press Enter
+   - Go to "Advanced" tab → "Environment Variables"
+   - Under "System Variables", find "Path" and click "Edit"
+   - Click "New" and add the path to FFmpeg's bin folder:
+     - If you extracted to `C:\ffmpeg`, add: `C:\ffmpeg\bin`
+     - If you extracted elsewhere, add: `[your-path]\bin`
+   - Click "OK" on all dialogs
+4. Restart your command prompt/PowerShell
+5. Verify installation by typing: `ffmpeg -version`
 
 **macOS:**
 ```bash
@@ -166,3 +178,4 @@ Feel free to submit issues and enhancement requests!
 ## License
 
 This project is open source and available under the MIT License.
+
