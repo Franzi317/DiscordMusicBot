@@ -90,11 +90,23 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=31488
 
 ### 6. Configure Environment Variables
 
-Create a `.env` file in the project root:
+1. **Copy the template file:**
+   ```bash
+   # Windows
+   copy env.template .env
+   
+   # macOS/Linux
+   cp env.template .env
+   ```
 
+2. **Edit the `.env` file** and replace `your_discord_bot_token_here` with your actual Discord bot token
+
+3. **Optional:** Customize other settings as needed
+
+**Example .env file:**
 ```env
 # Required: Your Discord Bot Token
-DISCORD_TOKEN=your_discord_bot_token_here
+DISCORD_TOKEN=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5
 
 # Optional: Bot Configuration
 BOT_PREFIX=!
@@ -116,8 +128,20 @@ LOG_FILE=musicbot.log
 ### 7. Run the Bot
 
 ```bash
+# Windows
 python main.py
+
+# Or use the batch file
+start_bot.bat
+
+# macOS/Linux
+python3 main.py
+
+# Or use the shell script
+./start_bot.sh
 ```
+
+**Note:** The `env.template` file is provided as a starting point. Copy it to `.env` and customize it with your Discord bot token before running the bot.
 
 ## Configuration Options
 
@@ -144,7 +168,10 @@ discord-music-bot/
 ├── music_player.py      # Music player logic and queue management
 ├── config.py            # Configuration management
 ├── requirements.txt     # Python dependencies
-└── README.md           # This file
+├── env.template         # Environment variables template
+├── start_bot.bat        # Windows startup script
+├── start_bot.sh         # Unix startup script
+└── README.md            # This file
 ```
 
 ## Troubleshooting
@@ -167,6 +194,12 @@ discord-music-bot/
    - Verify `.env` file exists and `DISCORD_TOKEN` is set
    - Check Python version (3.8+ required)
 
+5. **FFmpeg not found error**
+   - **Windows**: Make sure you added the `\bin` folder to PATH, not the main FFmpeg folder
+   - **Example**: Add `C:\ffmpeg\bin` to PATH, not `C:\ffmpeg`
+   - Restart your terminal after changing PATH
+   - Test with: `ffmpeg -version` in a new command prompt
+
 ### Logs
 
 The bot creates detailed logs in `musicbot.log`. Check this file for error details.
@@ -178,4 +211,3 @@ Feel free to submit issues and enhancement requests!
 ## License
 
 This project is open source and available under the MIT License.
-
