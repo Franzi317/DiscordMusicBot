@@ -160,28 +160,69 @@ class MusicPlayer:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(song.url, download=False)
                 
+                # Validate info structure
+                if not info or 'formats' not in info:
+                    logger.error(f"Invalid video info structure for song: {song.title}")
+                    raise ValueError("Invalid video info structure")
+                
+                logger.info(f"Found {len(info['formats'])} audio formats for song: {song.title}")
+                
                 # Find the best audio format
                 audio_formats = [f for f in info['formats'] if f.get('acodec') != 'none']
                 if not audio_formats:
                     # Fallback to any format
                     audio_formats = info['formats']
+                    logger.info(f"Using fallback formats for song: {song.title}")
                 
                 if not audio_formats:
                     logger.error(f"No audio formats found for song: {song.title}")
                     raise ValueError("No audio formats available")
                 
-                # Sort by quality (prefer audio-only formats)
-                audio_formats.sort(key=lambda x: (
-                    x.get('acodec') == 'none',  # Prefer audio-only
-                    x.get('abr', 0),            # Higher bitrate
-                    x.get('filesize', 0)        # Larger file size
-                ))
+                # Filter out formats without URLs
+                audio_formats = [f for f in audio_formats if f.get('url')]
+                if not audio_formats:
+                    logger.error(f"No formats with URLs found for song: {song.title}")
+                    raise ValueError("No audio formats with URLs available")
                 
-                url = audio_formats[0]['url']
+                # Sort by quality (prefer audio-only formats)
+                # Handle None values safely in sorting
+                def safe_sort_key(x):
+                    acodec = x.get('acodec', '')
+                    abr = x.get('abr', 0) or 0  # Convert None to 0
+                    filesize = x.get('filesize', 0) or 0  # Convert None to 0
+                    
+                    # Ensure numeric values are valid
+                    try:
+                        abr = float(abr) if abr is not None else 0.0
+                        filesize = float(filesize) if filesize is not None else 0.0
+                    except (ValueError, TypeError):
+                        abr = 0.0
+                        filesize = 0.0
+                    
+                    return (
+                        acodec == 'none',  # Prefer audio-only
+                        abr,               # Higher bitrate
+                        filesize           # Larger file size
+                    )
+                
+                try:
+                    audio_formats.sort(key=safe_sort_key)
+                    logger.info(f"Successfully sorted {len(audio_formats)} audio formats")
+                except Exception as e:
+                    logger.warning(f"Error sorting audio formats, using first available: {e}")
+                    # If sorting fails, just use the first format
+                
+                # Get the best format
+                best_format = audio_formats[0]
+                url = best_format.get('url')
+                
                 if not url:
                     logger.error(f"No URL found in audio format for song: {song.title}")
                     raise ValueError("No audio URL available")
                 
+                logger.info(f"Selected format: acodec={best_format.get('acodec', 'unknown')}, "
+                          f"abr={best_format.get('abr', 'unknown')}, "
+                          f"filesize={best_format.get('filesize', 'unknown')}")
                 logger.info(f"Using audio URL: {url[:100]}...")
                 
                 # Create FFmpeg audio source
@@ -207,11 +248,34 @@ class MusicPlayer:
                 
                 logger.info(f"Now playing: {song.title} in guild {guild_id}")
                 
+                # Reset retry counter on successful playback
+                if hasattr(self, '_play_retry_count'):
+                    self._play_retry_count = 0
+                
         except Exception as e:
             logger.error(f"Error playing song '{song.title}' in guild {guild_id}: {e}")
             logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
-            # Try to play next song
-            await self.play_next(guild_id)
+            
+            # Log additional context for debugging
+            logger.error(f"Voice client state: connected={voice_client.is_connected() if voice_client else 'No voice client'}")
+            logger.error(f"Queue state: {len(queue)} songs remaining")
+            
+            # Try to play next song, but limit retries to prevent infinite loops
+            if hasattr(self, '_play_retry_count'):
+                self._play_retry_count += 1
+            else:
+                self._play_retry_count = 1
+            
+            if self._play_retry_count <= 3:
+                logger.info(f"Retrying playback (attempt {self._play_retry_count}/3)")
+                await self.play_next(guild_id)
+            else:
+                logger.error(f"Max retry attempts reached for guild {guild_id}, stopping playback")
+                self._play_retry_count = 0
+                # Clear the queue to prevent further issues
+                queue.clear()
+                if guild_id in self.now_playing:
+                    del self.now_playing[guild_id]
     
     async def skip(self, guild_id: int):
         """Skip the current song"""
