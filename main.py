@@ -271,6 +271,35 @@ async def clearsearch(ctx):
     else:
         await ctx.send("📭 No stored search results to clear!")
 
+@bot.command(name='autodisconnect', aliases=['ad'])
+async def autodisconnect(ctx, setting: str):
+    """Enable or disable auto-disconnect when alone in voice channel"""
+    if not ctx.guild.voice_client:
+        await ctx.send("❌ I'm not in a voice channel!")
+        return
+    
+    # Initialize auto-disconnect settings if not exists
+    if not hasattr(music_player, 'auto_disconnect_enabled'):
+        music_player.auto_disconnect_enabled = {}
+    
+    setting = setting.lower()
+    
+    if setting in ['on', 'enable', 'true', '1']:
+        music_player.auto_disconnect_enabled[ctx.guild.id] = True
+        await ctx.send("✅ **Auto-disconnect enabled!** I'll leave when no one is listening.")
+        logger.info(f"Auto-disconnect enabled for guild {ctx.guild.id}")
+        
+    elif setting in ['off', 'disable', 'false', '0']:
+        music_player.auto_disconnect_enabled[ctx.guild.id] = False
+        await ctx.send("❌ **Auto-disconnect disabled!** I'll stay in the voice channel even when alone.")
+        logger.info(f"Auto-disconnect disabled for guild {ctx.guild.id}")
+        
+    else:
+        current_setting = music_player.auto_disconnect_enabled.get(ctx.guild.id, True)
+        status = "enabled" if current_setting else "disabled"
+        await ctx.send(f"❓ **Current setting:** Auto-disconnect is **{status}**\n"
+                      f"Use `{Config.BOT_PREFIX}autodisconnect on` or `{Config.BOT_PREFIX}autodisconnect off`")
+
 @bot.command(name='play', aliases=['p'])
 async def play(ctx, *, query: str):
     """Play a song from YouTube"""
@@ -566,6 +595,7 @@ async def help_command(ctx):
         ("remove/rm <position>", "Remove a song from queue"),
         ("playresult <number>", "Play a specific search result (use after !search)"),
         ("clearsearch", "Clear stored search results"),
+        ("autodisconnect <on/off>", "Enable/disable auto-disconnect when alone"),
         ("help", "Show this help message")
     ]
     
@@ -584,22 +614,73 @@ async def on_voice_state_update(member, before, after):
     
     voice_client = music_player.voice_clients[member.guild.id]
     
-    # If bot is alone in the channel, disconnect after a delay
-    if voice_client.is_connected():
-        channel = voice_client.channel
-        members = [m for m in channel.members if not m.bot]
+    # Check if bot is connected and in a channel
+    if not voice_client.is_connected() or not voice_client.channel:
+        return
+    
+    channel = voice_client.channel
+    members = [m for m in channel.members if not m.bot]
+    
+    # If bot is alone in the channel, start disconnect process
+    if len(members) == 0:
+        # Check if auto-disconnect is enabled for this guild
+        if hasattr(music_player, 'auto_disconnect_enabled'):
+            if not music_player.auto_disconnect_enabled.get(member.guild.id, True):
+                logger.info(f"Auto-disconnect disabled for guild {member.guild.id}, staying in channel")
+                return
+        else:
+            # Default to enabled
+            music_player.auto_disconnect_enabled = {}
+            music_player.auto_disconnect_enabled[member.guild.id] = True
         
-        if len(members) == 0:
-            logger.info(f"Bot is alone in {channel.name}, disconnecting in 10 seconds...")
-            await asyncio.sleep(10)
+        logger.info(f"Bot is alone in {channel.name}, starting auto-disconnect process...")
+        
+        # Send a warning message to the channel
+        try:
+            await channel.send(f"⚠️ **No one is listening!** I'll leave in {Config.AUTO_DISCONNECT_DELAY} seconds if no one joins...")
+        except Exception as e:
+            logger.warning(f"Could not send warning message: {e}")
+        
+        # Wait for configured delay, checking periodically for new users
+        for i in range(Config.AUTO_DISCONNECT_DELAY):
+            await asyncio.sleep(1)
             
-            # Check again after delay
-            if voice_client.is_connected():
-                members = [m for m in voice_client.channel.members if not m.bot]
-                if len(members) == 0:
-                    await music_player.stop(member.guild.id)
+            # Check if anyone joined during the wait
+            if voice_client.is_connected() and voice_client.channel:
+                current_members = [m for m in voice_client.channel.members if not m.bot]
+                if len(current_members) > 0:
+                    logger.info(f"Users joined {channel.name}, cancelling auto-disconnect")
+                    try:
+                        await channel.send("✅ **Welcome back!** I'll keep playing music for you!")
+                    except Exception as e:
+                        logger.warning(f"Could not send welcome message: {e}")
+                    return
+        
+        # Final check - if still alone, disconnect
+        if voice_client.is_connected() and voice_client.channel:
+            final_members = [m for m in voice_client.channel.members if not m.bot]
+            if len(final_members) == 0:
+                logger.info(f"Bot is still alone in {channel.name}, disconnecting now")
+                
+                # Stop music and clear queue
+                await music_player.stop(member.guild.id)
+                
+                # Send goodbye message
+                try:
+                    await channel.send("👋 **Goodbye!** I'm leaving since no one is listening. Come back anytime!")
+                except Exception as e:
+                    logger.warning(f"Could not send goodbye message: {e}")
+                
+                # Disconnect from voice
+                try:
                     await voice_client.disconnect()
-                    await voice_client.guild.system_channel.send("👋 Left the voice channel because I was alone!")
+                    logger.info(f"Successfully disconnected from {channel.name}")
+                except Exception as e:
+                    logger.error(f"Error disconnecting from voice channel: {e}")
+                
+                # Clean up voice client reference
+                if member.guild.id in music_player.voice_clients:
+                    del music_player.voice_clients[member.guild.id]
 
 async def test_discord_connectivity():
     """Test connectivity to Discord servers"""
