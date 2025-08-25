@@ -406,15 +406,91 @@ async def on_voice_state_update(member, before, after):
                     await voice_client.disconnect()
                     await voice_client.guild.system_channel.send("👋 Left the voice channel because I was alone!")
 
+async def test_discord_connectivity():
+    """Test connectivity to Discord servers"""
+    import aiohttp
+    
+    print("🔍 Testing Discord connectivity...")
+    
+    # Test basic Discord endpoints
+    endpoints = [
+        "https://discord.com/api/v10/gateway",
+        "https://discord.com/api/v10/users/@me",
+        "https://status.discord.com/api/v2/status.json"
+    ]
+    
+    async with aiohttp.ClientSession() as session:
+        for endpoint in endpoints:
+            try:
+                async with session.get(endpoint, timeout=10) as response:
+                    if response.status == 200:
+                        print(f"✅ {endpoint} - OK")
+                    else:
+                        print(f"⚠️  {endpoint} - Status: {response.status}")
+            except Exception as e:
+                print(f"❌ {endpoint} - Error: {e}")
+    
+    print("🔍 Connectivity test completed.")
+
 def main():
     """Main function to run the bot"""
     try:
         # Validate configuration
         Config.validate()
         
+        # Test connectivity first
+        import asyncio
+        try:
+            asyncio.run(test_discord_connectivity())
+        except Exception as e:
+            logger.warning(f"Connectivity test failed: {e}")
+        
         # Run the bot
         logger.info("Starting Discord Music Bot...")
-        bot.run(Config.DISCORD_TOKEN)
+        
+        # Add retry logic for connection issues
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Connection attempt {attempt + 1}/{max_retries}")
+                bot.run(Config.DISCORD_TOKEN)
+                break  # If successful, break out of retry loop
+                
+            except discord.errors.HTTPException as e:
+                if e.status == 503:
+                    logger.error(f"Discord service unavailable (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        print(f"Discord is experiencing issues. Retrying in {retry_delay} seconds...")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        print("Max retry attempts reached. Discord may be experiencing issues.")
+                        print("Please check https://status.discord.com/ for service status.")
+                else:
+                    raise  # Re-raise non-503 HTTP errors
+                    
+            except discord.errors.ConnectionClosed as e:
+                logger.error(f"Connection closed (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    print(f"Connection failed. Retrying in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    print("Max retry attempts reached. Please check your internet connection.")
+                    
+            except Exception as e:
+                logger.error(f"Unexpected error during connection attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Connection error. Retrying in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise  # Re-raise on final attempt
         
     except ValueError as e:
         logger.error(f"Configuration error: {e}")
@@ -423,6 +499,11 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         print(f"An unexpected error occurred: {e}")
+        print("\nTroubleshooting tips:")
+        print("1. Check your internet connection")
+        print("2. Verify your Discord bot token is correct")
+        print("3. Check if Discord is experiencing issues: https://status.discord.com/")
+        print("4. Try running the bot again in a few minutes")
 
 if __name__ == "__main__":
     main()
