@@ -68,10 +68,13 @@ async def join(ctx):
     try:
         voice_client = await channel.connect()
         music_player.voice_clients[ctx.guild.id] = voice_client
-        music_player.volume[ctx.guild.id] = Config.DEFAULT_VOLUME
+        
+        # Ensure volume is properly initialized
+        music_player.set_volume(ctx.guild.id, Config.DEFAULT_VOLUME)
         
         await ctx.send(f"🎵 Joined **{channel.name}** and ready to play music!")
         logger.info(f"Bot joined voice channel {channel.name} in guild {ctx.guild.id}")
+        logger.info(f"Initialized volume for guild {ctx.guild.id}: {music_player.get_volume(ctx.guild.id)}")
         
     except Exception as e:
         logger.error(f"Error joining voice channel: {e}")
