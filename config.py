@@ -17,6 +17,9 @@ class Config:
     MAX_PLAYLIST_SIZE = int(os.getenv('MAX_PLAYLIST_SIZE', '50'))
     MAX_SONG_LENGTH = int(os.getenv('MAX_SONG_LENGTH', '600'))  # 10 minutes in seconds
     
+    # Auto-disconnect Configuration
+    AUTO_DISCONNECT_DELAY = int(os.getenv('AUTO_DISCONNECT_DELAY', '10'))  # seconds
+    
     # Audio Configuration
     DEFAULT_VOLUME = float(os.getenv('DEFAULT_VOLUME', '0.5'))
     MAX_VOLUME = float(os.getenv('MAX_VOLUME', '1.0'))
