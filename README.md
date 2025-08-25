@@ -1,10 +1,21 @@
 # Discord Music Bot
 
-A feature-rich Discord music bot that can search YouTube and play music in voice channels.
+A feature-rich Discord music bot that plays music directly from YouTube URLs or searches. Perfect for quick music playback and advanced queue management.
+
+## Quick Start
+
+1. **Join a voice channel** in your Discord server
+2. **Use `!play <song name or YouTube URL>`** to add music to the queue
+3. **That's it!** The bot will automatically join and start playing
+
+**Examples:**
+- `!play despacito` - Search and play "Despacito"
+- `!play https://youtube.com/watch?v=...` - Play from YouTube URL
+- `!p billie jean` - Quick play with alias
 
 ## Features
 
-- 🎵 **YouTube Music Search**: Search and play songs from YouTube
+- 🎵 **Direct YouTube Playback**: Play songs instantly with `!play <url or search>`
 - 📱 **Queue Management**: Add, view, and manage music queues
 - 🔊 **Volume Control**: Adjust bot volume from 0-100%
 - ⏯️ **Playback Controls**: Play, pause, resume, skip, and stop
@@ -16,11 +27,8 @@ A feature-rich Discord music bot that can search YouTube and play music in voice
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
+| `!play <query>` | `!p` | **Primary command** - Play a song from YouTube URL or search |
 | `!join` | `!j` | Join your voice channel |
-| `!search <query>` | `!sr` | Search for songs and choose from results |
-| `!quicksearch <query>` | `!qs` | Quick search showing results without reactions |
-| `!play <query>` | `!p` | Play a song from YouTube directly |
-| `!playresult <number>` | - | Play a specific search result |
 | `!playlist <url>` | `!pl` | Add a YouTube playlist to queue |
 | `!skip` | `!s` | Skip the current song |
 | `!stop` | `!st` | Stop playback and clear queue |
@@ -33,23 +41,46 @@ A feature-rich Discord music bot that can search YouTube and play music in voice
 | `!shuffle` | - | Shuffle the current queue |
 | `!clear` | - | Clear the music queue |
 | `!remove <position>` | `!rm` | Remove a song from queue |
+| `!search <query>` | `!sr` | Advanced search with interactive results |
+| `!quicksearch <query>` | `!qs` | Quick search showing results without reactions |
+| `!playresult <number>` | - | Play a specific search result |
 | `!clearsearch` | - | Clear stored search results |
+| `!autodisconnect <on/off>` | `!ad` | Enable/disable auto-disconnect when alone |
 | `!help` | - | Show help information |
 
-## Search Commands
+## Primary Usage: `!play` Command
 
-The bot now includes powerful search functionality:
+The `!play` command is the main way to add music to your queue. It's fast, simple, and works with both YouTube URLs and search queries.
+
+### `!play <query>` or `!p <query>`
+- **Primary command** for adding music to your queue
+- Works with YouTube URLs: `!play https://youtube.com/watch?v=...`
+- Works with search queries: `!play rick astley never gonna give you up`
+- Automatically finds the best match and adds it to your queue
+- Perfect for quick music requests
+
+**Examples:**
+- `!play https://www.youtube.com/watch?v=dQw4w9WgXcQ`
+- `!play despacito`
+- `!play queen bohemian rhapsody`
+- `!p billie jean michael jackson`
+
+## Advanced Search Commands
+
+For more control over song selection, the bot includes advanced search functionality:
 
 ### `!search <query>` or `!sr <query>`
-- Searches YouTube for songs matching your query
+- **Advanced search** with interactive results (use `!play` for quick requests)
 - Shows up to 5 results with interactive reactions
 - Click the number emoji (1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣) to play that song
 - Results are stored for use with `!playresult`
+- Best for when you want to choose from multiple options
 
 ### `!quicksearch <query>` or `!qs <query>`
-- Quick search that shows results without reactions
+- **Quick preview** of search results without reactions
 - Useful for seeing what's available before deciding
 - Results are also stored for `!playresult`
+- Alternative to `!search` when you don't need reactions
 
 ### `!playresult <number>`
 - Play a specific search result by number (1-5)
@@ -59,6 +90,28 @@ The bot now includes powerful search functionality:
 ### `!clearsearch`
 - Clear your stored search results
 - Use if you want to start fresh with new searches
+
+### `!autodisconnect <on/off>` or `!ad <on/off>`
+- Control whether the bot automatically leaves when no one is listening
+- **On (default)**: Bot leaves after 10 seconds of being alone
+- **Off**: Bot stays in voice channel even when alone
+- Examples: `!autodisconnect on`, `!ad off`
+
+## Auto-Disconnect Feature
+
+The bot automatically detects when it's alone in a voice channel and will leave after a configurable delay (default: 10 seconds). This helps save resources and ensures the bot isn't playing music for no one.
+
+**How it works:**
+1. **Detection**: Bot monitors voice channel for human users
+2. **Warning**: Sends a message when alone: "⚠️ No one is listening! I'll leave in 10 seconds if no one joins..."
+3. **Countdown**: Waits 10 seconds, checking every second for new users
+4. **Cancellation**: If someone joins during the countdown, the bot stays
+5. **Disconnect**: If still alone after 10 seconds, bot stops music and leaves
+
+**Configuration:**
+- Set `AUTO_DISCONNECT_DELAY=15` in your `.env` file to change the delay to 15 seconds
+- Use `!autodisconnect off` to disable the feature for your server
+- Use `!autodisconnect on` to re-enable it
 
 ## Setup Instructions
 
@@ -174,6 +227,12 @@ python3 main.py
 ./start_bot.sh
 ```
 
+### 8. Start Playing Music!
+
+1. **Invite the bot** to your Discord server
+2. **Join a voice channel**
+3. **Use `!play <song name>`** to start playing music instantly!
+
 **Note:** The `env.template` file is provided as a starting point. Copy it to `.env` and customize it with your Discord bot token before running the bot.
 
 ## Configuration Options
@@ -188,6 +247,9 @@ python3 main.py
 - `MAX_SONG_LENGTH`: Maximum song length in seconds (default: 600 = 10 minutes)
 - `DEFAULT_VOLUME`: Default volume 0.0-1.0 (default: 0.5)
 - `MAX_VOLUME`: Maximum volume allowed (default: 1.0)
+
+### Auto-Disconnect Settings
+- `AUTO_DISCONNECT_DELAY`: Seconds to wait before leaving when alone (default: 10)
 
 ### Audio Settings
 - `FFMPEG_OPTIONS`: FFmpeg configuration for audio processing
