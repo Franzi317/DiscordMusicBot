@@ -80,6 +80,197 @@ async def join(ctx):
         logger.error(f"Error joining voice channel: {e}")
         await ctx.send("❌ Failed to join the voice channel!")
 
+@bot.command(name='search', aliases=['sr'])
+async def search(ctx, *, query: str):
+    """Search for songs on YouTube and show results"""
+    if not ctx.author.voice:
+        await ctx.send("❌ You need to be in a voice channel first!")
+        return
+    
+    # Show searching message
+    searching_msg = await ctx.send(f"🔍 Searching for: **{query}**")
+    
+    try:
+        # Search for multiple songs
+        songs = await music_player.search_youtube_multiple(query, max_results=5)
+        
+        if not songs:
+            await searching_msg.edit(content="❌ No songs found for that query!")
+            return
+        
+        # Store search results for this user (for playresult command)
+        if not hasattr(music_player, 'last_search_results'):
+            music_player.last_search_results = {}
+        music_player.last_search_results[ctx.author.id] = songs
+        
+        # Create search results embed
+        embed = discord.Embed(
+            title=f"🔍 Search Results for: {query}",
+            description="React with the number to play that song, or use `!play <query>` to play directly.",
+            color=0x00ff00
+        )
+        
+        for i, song in enumerate(songs, 1):
+            duration_str = song.formatted_duration if song.duration > 0 else "Unknown duration"
+            embed.add_field(
+                name=f"{i}. {song.title}",
+                value=f"⏱️ {duration_str} | 📺 [View on YouTube]({song.url})",
+                inline=False
+            )
+        
+        embed.set_footer(text="React with 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ to play, or wait 60 seconds")
+        
+        # Send the search results
+        search_msg = await searching_msg.edit(content="", embed=embed)
+        
+        # Add reaction options
+        reactions = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
+        for i, reaction in enumerate(reactions[:len(songs)]):
+            await search_msg.add_reaction(reaction)
+        
+        # Wait for user reaction
+        def check(reaction, user):
+            return user == ctx.author and reaction.message.id == search_msg.id and str(reaction.emoji) in reactions[:len(songs)]
+        
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            
+            # Get the selected song index
+            song_index = reactions.index(str(reaction.emoji))
+            selected_song = songs[song_index]
+            
+            # Set the requester
+            selected_song.requester = ctx.author
+            
+            # Check song length
+            if selected_song.duration > Config.MAX_SONG_LENGTH:
+                await search_msg.edit(content=f"❌ **{selected_song.title}** is too long! Maximum allowed: {Config.MAX_SONG_LENGTH // 60} minutes")
+                return
+            
+            # Ensure bot is in voice channel
+            if not ctx.guild.voice_client:
+                await ctx.invoke(bot.get_command('join'))
+            
+            # Add to queue
+            added = await music_player.add_to_queue(ctx.guild.id, selected_song)
+            
+            if not added:
+                await search_msg.edit(content="❌ Queue is full!")
+                return
+            
+            # Update message
+            await search_msg.edit(content=f"✅ Added to queue: **{selected_song.title}** ({selected_song.formatted_duration})")
+            
+            # Start playing if nothing is currently playing
+            if not music_player.now_playing.get(ctx.guild.id):
+                await music_player.play_next(ctx.guild.id)
+                
+        except asyncio.TimeoutError:
+            await search_msg.edit(content="⏰ Search timed out. Use `!play <query>` to play directly.")
+            
+    except Exception as e:
+        logger.error(f"Error in search command: {e}")
+        await searching_msg.edit(content="❌ An error occurred while searching!")
+
+@bot.command(name='quicksearch', aliases=['qs'])
+async def quicksearch(ctx, *, query: str):
+    """Quick search that shows results without reactions"""
+    if not ctx.author.voice:
+        await ctx.send("❌ You need to be in a voice channel first!")
+        return
+    
+    # Show searching message
+    searching_msg = await ctx.send(f"🔍 Quick searching for: **{query}**")
+    
+    try:
+        # Search for multiple songs
+        songs = await music_player.search_youtube_multiple(query, max_results=5)
+        
+        if not songs:
+            await searching_msg.edit(content="❌ No songs found for that query!")
+            return
+        
+        # Store search results for this user (for playresult command)
+        if not hasattr(music_player, 'last_search_results'):
+            music_player.last_search_results = {}
+        music_player.last_search_results[ctx.author.id] = songs
+        
+        # Create simple search results
+        result_text = f"🔍 **Search Results for: {query}**\n\n"
+        
+        for i, song in enumerate(songs, 1):
+            duration_str = song.formatted_duration if song.duration > 0 else "Unknown duration"
+            result_text += f"**{i}.** {song.title}\n"
+            result_text += f"   ⏱️ {duration_str} | 📺 [YouTube]({song.url})\n\n"
+        
+        result_text += "💡 **Tip:** Use `!search <query>` for interactive selection with reactions!"
+        
+        await searching_msg.edit(content=result_text)
+        
+    except Exception as e:
+        logger.error(f"Error in quicksearch command: {e}")
+        await searching_msg.edit(content="❌ An error occurred while searching!")
+
+@bot.command(name='playresult')
+async def playresult(ctx, number: int):
+    """Play a specific search result by number (use after !search)"""
+    if not ctx.author.voice:
+        await ctx.send("❌ You need to be in a voice channel first!")
+        return
+    
+    # Check if there are stored search results for this user
+    if not hasattr(music_player, 'last_search_results'):
+        music_player.last_search_results = {}
+    
+    user_results = music_player.last_search_results.get(ctx.author.id, [])
+    
+    if not user_results:
+        await ctx.send("❌ No search results found! Use `!search <query>` first.")
+        return
+    
+    if number < 1 or number > len(user_results):
+        await ctx.send(f"❌ Invalid number! Choose between 1 and {len(user_results)}")
+        return
+    
+    # Get the selected song
+    selected_song = user_results[number - 1]
+    selected_song.requester = ctx.author
+    
+    # Check song length
+    if selected_song.duration > Config.MAX_SONG_LENGTH:
+        await ctx.send(f"❌ **{selected_song.title}** is too long! Maximum allowed: {Config.MAX_SONG_LENGTH // 60} minutes")
+        return
+    
+    # Ensure bot is in voice channel
+    if not ctx.guild.voice_client:
+        await ctx.invoke(bot.get_command('join'))
+    
+    # Add to queue
+    added = await music_player.add_to_queue(ctx.guild.id, selected_song)
+    
+    if not added:
+        await ctx.send("❌ Queue is full!")
+        return
+    
+            # Update message
+        await ctx.send(f"✅ Added to queue: **{selected_song.title}** ({selected_song.formatted_duration})")
+    
+        # Start playing if nothing is currently playing
+        if not music_player.now_playing.get(ctx.guild.id):
+            await music_player.play_next(ctx.guild.id)
+
+@bot.command(name='clearsearch')
+async def clearsearch(ctx):
+    """Clear stored search results for the user"""
+    if not hasattr(music_player, 'last_search_results'):
+        music_player.last_search_results = {}
+    
+    if ctx.author.id in music_player.last_search_results:
+        del music_player.last_search_results[ctx.author.id]
+        await ctx.send("🗑️ Cleared your stored search results!")
+    else:
+        await ctx.send("📭 No stored search results to clear!")
+
 @bot.command(name='play', aliases=['p'])
 async def play(ctx, *, query: str):
     """Play a song from YouTube"""
@@ -358,7 +549,9 @@ async def help_command(ctx):
     
     commands_info = [
         ("join/j", "Join your voice channel"),
-        ("play/p <query>", "Play a song from YouTube"),
+        ("search/sr <query>", "Search for songs and choose from results"),
+        ("quicksearch/qs <query>", "Quick search showing results without reactions"),
+        ("play/p <query>", "Play a song from YouTube directly"),
         ("playlist/pl <url>", "Add a YouTube playlist to queue"),
         ("skip/s", "Skip the current song"),
         ("stop/st", "Stop playback and clear queue"),
@@ -371,6 +564,8 @@ async def help_command(ctx):
         ("shuffle", "Shuffle the current queue"),
         ("clear", "Clear the music queue"),
         ("remove/rm <position>", "Remove a song from queue"),
+        ("playresult <number>", "Play a specific search result (use after !search)"),
+        ("clearsearch", "Clear stored search results"),
         ("help", "Show this help message")
     ]
     
