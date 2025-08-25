@@ -17,7 +17,11 @@ A feature-rich Discord music bot that can search YouTube and play music in voice
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | `!join` | `!j` | Join your voice channel |
-| `!play <query>` | `!p` | Play a song from YouTube |
+| `!search <query>` | `!sr` | Search for songs and choose from results |
+| `!quicksearch <query>` | `!qs` | Quick search showing results without reactions |
+| `!play <query>` | `!p` | Play a song from YouTube directly |
+| `!playresult <number>` | - | Play a specific search result |
+| `!playlist <url>` | `!pl` | Add a YouTube playlist to queue |
 | `!skip` | `!s` | Skip the current song |
 | `!stop` | `!st` | Stop playback and clear queue |
 | `!pause` | - | Pause the current song |
@@ -25,7 +29,36 @@ A feature-rich Discord music bot that can search YouTube and play music in voice
 | `!queue` | `!q` | Show the current queue |
 | `!volume <0-100>` | `!vol`, `!v` | Set the bot's volume |
 | `!leave` | `!dc` | Leave the voice channel |
+| `!nowplaying` | `!np` | Show current song info |
+| `!shuffle` | - | Shuffle the current queue |
+| `!clear` | - | Clear the music queue |
+| `!remove <position>` | `!rm` | Remove a song from queue |
+| `!clearsearch` | - | Clear stored search results |
 | `!help` | - | Show help information |
+
+## Search Commands
+
+The bot now includes powerful search functionality:
+
+### `!search <query>` or `!sr <query>`
+- Searches YouTube for songs matching your query
+- Shows up to 5 results with interactive reactions
+- Click the number emoji (1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣) to play that song
+- Results are stored for use with `!playresult`
+
+### `!quicksearch <query>` or `!qs <query>`
+- Quick search that shows results without reactions
+- Useful for seeing what's available before deciding
+- Results are also stored for `!playresult`
+
+### `!playresult <number>`
+- Play a specific search result by number (1-5)
+- Use after running `!search` or `!quicksearch`
+- Example: `!playresult 3` plays the 3rd result
+
+### `!clearsearch`
+- Clear your stored search results
+- Use if you want to start fresh with new searches
 
 ## Setup Instructions
 
